@@ -1,0 +1,20 @@
+CREATE TABLE `trusted_domains` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `domain` varchar(255) NOT NULL,
+  `company_name` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+Trusted domæner
+
+INSERT INTO `trusted_domains` (`domain`, `company_name`, `is_active`) VALUES
+('google.com', 'Google', 1),
+('microsoft.com', 'Microsoft', 1),
+('apple.com', 'Apple', 1),
+('amazon.com', 'Amazon', 1),
+('facebook.com', 'Meta', 1),
+('netflix.com', 'Netflix', 1);
