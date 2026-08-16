@@ -85,6 +85,7 @@ async function onSquareClick(e) {
   const c = +e.currentTarget.dataset.c;
   const piece = game.board[r][c];
 
+  // Trin 1: Hvis en brik er valgt og dette er et grønt målfelt -> udfør træk.
   if (selected && currentTargets.has(`${r},${c}`)) {
     const from = `${selected.r},${selected.c}`;
     try {
@@ -101,18 +102,47 @@ async function onSquareClick(e) {
     return;
   }
 
-  if (piece && piece[0] === mySlot && game.turn === mySlot) {
+  // Trin 2: Trin for at vælge en brik. Giv altid tydelig feedback.
+  if (piece) {
+    // Er det min egen brik?
+    if (!mySlot) {
+      flash('Du er ikke forbundet til spillet endnu. Vent et øjeblik eller genindlæs siden.');
+      return;
+    }
+    if (piece[0] !== mySlot) {
+      flash('Det er modstanderens brik.');
+      return;
+    }
+    // Er det min tur?
+    if (game.turn !== mySlot) {
+      flash('Det er ikke din tur endnu.');
+      return;
+    }
+    // Kaskade: skal fortsætte med den rigtige brik?
     if (game.continuing && game.continuing !== `${r},${c}`) {
       flash('Du skal fortsætte med den brik der lige slog.');
       return;
     }
+    // Vælg brikken.
     selected = { r, c };
     currentTargets = await fetchLegalTargets(r, c);
+    if (currentTargets.size === 0) {
+      // Tvunget slag: denne brik kan ikke flytte nu.
+      const anyCapture = anyCaptureAvailable(mySlot);
+      if (anyCapture) {
+        flash('Du skal slå med en anden brik (tvunget slag).');
+      } else {
+        flash('Denne brik kan ikke flytte.');
+      }
+    }
     render();
-  } else if (selected) {
-    selected = null;
-    currentTargets.clear();
-    render();
+  } else {
+    // Klik på tomt felt uden at være et mål -> afvælg.
+    if (selected) {
+      selected = null;
+      currentTargets.clear();
+      render();
+    }
   }
 }
 
@@ -174,7 +204,7 @@ async function fetchLegalTargets(r, c) {
 function flash(msg) {
   const s = $('status');
   s.textContent = '⚠ ' + msg;
-  setTimeout(updateStatus, 2500);
+  setTimeout(updateStatus, 3000);
 }
 
 function updateStatus() {
@@ -190,11 +220,14 @@ function updateStatus() {
   } else if (game.winner) {
     const w = game.winner === 'W' ? 'Hvid (W)' : 'Sort (B)';
     line = `🏆 ${w} vandt! Træk i alt: ${game.moveCount}`;
+  } else if (!mySlot) {
+    line = '⏳ Forbinder til spillet…';
   } else {
     const turnName = game.turn === 'W' ? 'Hvid (W)' : 'Sort (B)';
     const mine = game.turn === mySlot;
     const cont = game.continuing ? ' — fortsæt kaskade-slå!' : '';
-    line = `Tur: ${turnName}${mine ? ' — din tur' : ''}${cont}`;
+    const wait = !mine ? ' — vent på modstander' : '';
+    line = `Tur: ${turnName}${mine ? ' — din tur, klik en brik' : ''}${cont}${wait}`;
   }
   s.innerHTML = `${slotBadge('W','Hvid')} &nbsp;&nbsp; ${slotBadge('B','Sort')}<br>${line}`;
 }
