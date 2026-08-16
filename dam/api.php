@@ -3,18 +3,14 @@ declare(strict_types=1);
 
 /**
  * REST-ish endpoint for netværksbaseret Dam.
- *
- * Endpoints:
- *   POST api.php?action=join            -> tildeler spiller W/B eller afviser (kun 2)
- *   GET  api.php?action=status&rev=N     -> returnerer state + legal moves; kort-poller ~6s
- *   POST api.php?action=move&from=&to=   -> udfører træk for den aktuelle spiller
- *   POST api.php?action=reset           -> nulstiller spil + spillere
- *
- * Robust mod Apache/Nginx + php-fpm: polling er kort (6s) så processer frigives hurtigt.
- * Delt tilstand gemmes i ./data/state.json og ./data/players.json med en flock-lås.
+ * Endpoints: join | status | move | reset
  */
 
 require __DIR__ . '/Game.php';
+
+// Midlertidig fejlvisning for at finde runtime-fejl (fjern i produktion).
+ini_set('display_errors', '0'); // ikke HTML i JSON
+error_reporting(E_ALL);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -111,15 +107,21 @@ function newToken(): string
     return bin2hex(random_bytes(16));
 }
 
-/** Byg status-svar inkl. server-beregnete lovlige træk for aktuelle spiller. */
+/** Byg status-svar inkl. server-beregnete lovlige træk. Fejl fanges og eksponeres. */
 function buildStatus(array $state, array $players): array
 {
     $game = Game::fromArray($state['game']);
+    try {
+        $legal = $game->legalMoves();
+    } catch (\Throwable $e) {
+        // Vis fejlen i stedet for at lade JSON mangle legal.
+        $legal = ['__error__' => $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()];
+    }
     return [
         'ok'    => true,
         'rev'   => $state['rev'],
         'game'  => $state['game'],
-        'legal' => $game->legalMoves(),
+        'legal' => $legal,
         'slots' => [
             'W' => $players['slots']['W'] !== null,
             'B' => $players['slots']['B'] !== null,
@@ -175,7 +177,6 @@ switch ($action) {
             }
             usleep(400000);
         }
-        // Timeout - returner nuværende uændrede tilstand.
         jsonResponse(buildStatus(loadState(), loadPlayers()));
         break;
 
