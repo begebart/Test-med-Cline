@@ -24,7 +24,7 @@ final class Game
     public const SIZE = 8;
     public const EMPTY = '';
 
-    /** @var array<int, array<int,string>> $board række => kolonne => 'W'|'B'|'WK'|'BK'|'' */
+    /** @var array<int, array<int,string>> board række => kolonne => 'W'|'B'|'WK'|'BK'|'' */
     private array $board;
 
     private string $turn = 'W';          // 'W' eller 'B'
@@ -34,11 +34,33 @@ final class Game
 
     private function __construct(array $board, string $turn, ?string $winner, ?string $continuing, int $moveCount)
     {
-        $this->board = $board;
+        $this->board = self::normalizeBoard($board);
         $this->turn = $turn;
         $this->winner = $winner;
         $this->continuing = $continuing;
         $this->moveCount = $moveCount;
+    }
+
+    /**
+     * Normaliser boardet til at have int-nøgler og fuld 8x8 struktur.
+     * JSON-decoding giver string-nøgler ("0","1"...) som bryder strict_types
+     * int-parametre. Her sikrer vi int-nøgler og at alle felter findes.
+     */
+    private static function normalizeBoard(array $raw): array
+    {
+        $b = [];
+        for ($r = 0; $r < self::SIZE; $r++) {
+            $b[$r] = [];
+            $rawRow = $raw[$r] ?? ($raw[(string) $r] ?? []);
+            if (!is_array($rawRow)) {
+                $rawRow = [];
+            }
+            for ($c = 0; $c < self::SIZE; $c++) {
+                $val = $rawRow[$c] ?? ($rawRow[(string) $c] ?? '');
+                $b[$r][$c] = is_string($val) ? $val : '';
+            }
+        }
+        return $b;
     }
 
     public static function create(): self
@@ -47,8 +69,7 @@ final class Game
         for ($r = 0; $r < self::SIZE; $r++) {
             $b[$r] = array_fill(0, self::SIZE, self::EMPTY);
         }
-        // Sort (top) på række 0,1,2; Hvid (bund) på række 5,6,7. Kun mørke felter:
-        // mørkt felt når (r+c) er ulige.
+        // Sort (top) på række 0,1,2; Hvid (bund) på række 5,6,7. Kun mørke felter.
         for ($r = 0; $r < 3; $r++) {
             for ($c = 0; $c < self::SIZE; $c++) {
                 if (($r + $c) % 2 === 1) {
@@ -119,14 +140,14 @@ final class Game
         $captures = [];
         $moves = [];
 
-        foreach ($this->board as $r => $row) {
-            foreach ($row as $c => $piece) {
+        for ($r = 0; $r < self::SIZE; $r++) {
+            for ($c = 0; $c < self::SIZE; $c++) {
+                $piece = $this->board[$r][$c];
                 if ($piece === '' || $piece[0] !== $this->turn) {
                     continue;
                 }
                 $from = "$r,$c";
                 if ($this->continuing !== null && $this->continuing !== $from) {
-                    // Midt i en kaskade: kun den aktuelle brik må fortsætte.
                     continue;
                 }
                 [$caps, $mvs] = $this->movesForPiece($r, $c, $piece);
@@ -165,12 +186,9 @@ final class Game
                     $captures[] = "$landR,$landC";
                 }
             }
-            // Enkelt træk fremad/side for konger, kun fremad for almindelige.
             $oneR = $r + $dr;
             $oneC = $c + $dc;
             if ($this->inBounds($oneR, $oneC) && $this->board[$oneR][$oneC] === '') {
-                // For almindelige brikker tillader vi kun "fremad" simple træk
-                // (directions() sikrer det allerede for menige; for konge er det alle 4).
                 $simple[] = "$oneR,$oneC";
             }
         }
@@ -197,11 +215,6 @@ final class Game
         return $r >= 0 && $r < self::SIZE && $c >= 0 && $c < self::SIZE;
     }
 
-    private function piece(int $r, int $c): string
-    {
-        return $this->board[$r][$c] ?? '';
-    }
-
     /**
      * Udfør et træk. Kaster InvalidArgumentException ved ulovligt træk.
      * Håndterer slag (fjern midterste brik), kaskade, promovering og tur-skift.
@@ -223,8 +236,8 @@ final class Game
 
         $isCapture = (abs($toR - $fromR) === 2);
         if ($isCapture) {
-            $midR = $fromR + ($toR - $fromR) / 2;
-            $midC = $fromC + ($toC - $fromC) / 2;
+            $midR = $fromR + (int) (($toR - $fromR) / 2);
+            $midC = $fromC + (int) (($toC - $fromC) / 2);
             $this->board[$midR][$midC] = '';
         }
 
@@ -245,7 +258,7 @@ final class Game
             [$caps,] = $this->movesForPiece($toR, $toC, $piece);
             if (count($caps) > 0) {
                 $this->continuing = "$toR,$toC";
-                return; // samme spillers tur fortsætter
+                return;
             }
         }
 
@@ -261,7 +274,6 @@ final class Game
 
     private function checkWinner(): void
     {
-        // Ingen brikker tilbage?
         $counts = ['W' => 0, 'B' => 0];
         foreach ($this->board as $row) {
             foreach ($row as $piece) {
@@ -278,7 +290,6 @@ final class Game
             $this->winner = 'W';
             return;
         }
-        // Ingen lovlige træk => modstander vinder.
         if (count($this->legalMoves()) === 0) {
             $this->winner = $this->turn === 'W' ? 'B' : 'W';
         }
