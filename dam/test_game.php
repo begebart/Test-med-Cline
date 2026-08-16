@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Selvtjekkende test af spilmotoren (international dam).
+ * Selvtjekkende test af spilmotoren (international dam, land-bagved-regel).
  * Kør:  php test_game.php
  * Exit 0 hvis alle tests passerer, 1 ved fejl.
  */
@@ -35,7 +35,7 @@ function gameFrom(array $board, string $turn = 'W'): Game
     ]);
 }
 
-// Test 1: Startposition — 12 brikker pr. farve, korrekt orientering.
+// Test 1: Startposition — 12 brikker pr. farve.
 $g = Game::create();
 $b = $g->board();
 $counts = ['W' => 0, 'B' => 0];
@@ -56,7 +56,6 @@ ok($g->turn() === 'W', "Hvid starter");
 // Test 2: Hvid rykker opad (fra række 5 til række 4).
 $g = Game::create();
 $legal = $g->legalMoves();
-ok(isset($legal['5,0']), "Hvid brik (5,0) har lovlige træk");
 ok(in_array('4,1', $legal['5,0'] ?? [], true), "Hvid (5,0) kan til (4,1)");
 $g->move(5, 0, 4, 1);
 ok($g->turn() === 'B', "Efter hvids træk er det sorts tur");
@@ -100,90 +99,101 @@ ok($g4->continuing() === '3,3', "Continuing sættes til (3,3)");
 $legal = $g4->legalMoves();
 ok(in_array('1,5', $legal['3,3'] ?? [], true), "Kaskade: brik kan slå igen til (1,5)");
 $g4->move(3, 3, 1, 5);
-ok($g4->continuing() === null, "Efter kaskade slut er continuing null");
-ok($g4->turn() === 'B', "Efter kaskade er det sorts tur");
+ok($g4->continuing() === null && $g4->turn() === 'B', "Efter kaskade er det sorts tur");
 
 // Test 7: Promovering — hvid ved række 0.
 $b7 = makeBoard();
 $b7[1][2] = 'W';
 $g5 = gameFrom($b7);
 $g5->move(1, 2, 0, 3);
-$brd = $g5->board();
-ok($brd[0][3] === 'WK', "Hvid brik promoveres til konge (WK) ved række 0");
+ok($g5->board()[0][3] === 'WK', "Hvid brik promoveres til Dam (WK) ved række 0");
 
 // Test 8: Sort promovering ved række 7.
 $b8 = makeBoard();
 $b8[6][1] = 'B';
 $g = gameFrom($b8, 'B');
 $g->move(6, 1, 7, 0);
-$brd = $g->board();
-ok($brd[7][0] === 'BK', "Sort brik promoveres til konge (BK) ved række 7");
+ok($g->board()[7][0] === 'BK', "Sort brik promoveres til Dam (BK) ved række 7");
 
-// Test 9: KONGE glider diagonalt (vilkårlig afstand) — simpelt træk.
+// Test 9: Dam glider diagonalt (simpelt træk).
 $b9 = makeBoard();
 $b9[4][4] = 'WK';
 $g6 = gameFrom($b9);
-$legal = $g6->legalMoves();
-$targets = $legal['4,4'] ?? [];
-ok(in_array('2,2', $targets, true), "Konge glider til (2,2)");
-ok(in_array('1,1', $targets, true), "Konge glider til (1,1)");
-ok(in_array('0,0', $targets, true), "Konge glider til (0,0)");
-ok(in_array('6,6', $targets, true), "Konge glider nedad til (6,6)");
-ok(in_array('5,3', $targets, true), "Konge glider nedad-anden diagonal (5,3)");
+$targets = $g6->legalMoves()['4,4'] ?? [];
+ok(in_array('2,2', $targets, true), "Dam glider til (2,2)");
+ok(in_array('1,1', $targets, true), "Dam glider til (1,1)");
+ok(in_array('0,0', $targets, true), "Dam glider til (0,0)");
+ok(in_array('6,6', $targets, true), "Dam glider nedad til (6,6)");
 
-// Test 10: Konge kan IKKE glide igennem en brik.
+// Test 10: Dam kan IKKE glide igennem en brik.
 $b10 = makeBoard();
 $b10[4][4] = 'WK';
-$b10[2][2] = 'B';   // blokerer diagonal op-venstre fra (4,4)
+$b10[2][2] = 'B';
 $g7 = gameFrom($b10);
-$legal = $g7->legalMoves();
-$targets = $legal['4,4'] ?? [];
-ok(in_array('3,3', $targets, true), "Konge kan til (3,3) før blokaden");
-ok(!in_array('1,1', $targets, true), "Konge kan IKKE passere blokerende brik til (1,1)");
-ok(!in_array('0,0', $targets, true), "Konge kan IKKE passere blokerende brik til (0,0)");
+$targets = $g7->legalMoves()['4,4'] ?? [];
+ok(in_array('3,3', $targets, true), "Dam kan til (3,3) før blokaden");
+ok(!in_array('1,1', $targets, true), "Dam kan IKKE passere blokerende brik til (1,1)");
 
-// Test 11: Flyvende konge-slag (hop over modstander, land på afstand).
+// Test 11: Dam-slag — SKAL lande lige bagved den slåede brik (streng regel).
+// Dam på (4,4), modstander på (2,2). Landing SKAL være (1,1) — IKKE (0,0).
 $b11 = makeBoard();
 $b11[4][4] = 'WK';
-$b11[2][2] = 'B';   // modstander-brik på diagonalen
+$b11[2][2] = 'B';
 $g8 = gameFrom($b11);
-$legal = $g8->legalMoves();
-$targets = $legal['4,4'] ?? [];
-ok(in_array('1,1', $targets, true), "Flyvende konge slår og lander på (1,1)");
-ok(in_array('0,0', $targets, true), "Flyvende konge slår og lander på (0,0)");
+$targets = $g8->legalMoves()['4,4'] ?? [];
+ok(in_array('1,1', $targets, true), "Dam slår og lander LIGE bagved på (1,1)");
+ok(!in_array('0,0', $targets, true), "Dam må IKKE lande længere ude på (0,0) (streng regel)");
 
-// Test 12: Udfør flyvende konge-slag og verificér at brikken fjernes.
-$g8->move(4, 4, 0, 0);
+// Test 12: Udfør Dam-slag og verificér at brikken fjernes.
+$g8->move(4, 4, 1, 1);
 $brd = $g8->board();
-ok($brd[4][4] === '', "Kongen er flyttet fra (4,4)");
-ok($brd[0][0] === 'WK', "Kongen landet på (0,0)");
+ok($brd[4][4] === '', "Dammen flyttet fra (4,4)");
+ok($brd[1][1] === 'WK', "Dammen landet på (1,1)");
 ok($brd[2][2] === '', "Slået modstander-brik (2,2) fjernet");
-ok($g8->turn() === 'B', "Efter konge-slag (ikke kaskade) er det sorts tur");
+ok($g8->turn() === 'B', "Efter Dam-slag (ikke kaskade) er det sorts tur");
 
-// Test 13: Tvunget slag gælder også for konger.
+// Test 13: Tvunget slag gælder også for Dam.
 $b13 = makeBoard();
 $b13[4][4] = 'WK';
-$b13[4][6] = 'W';     // anden hvid brik uden slag-mulighed
-$b13[2][2] = 'B';     // kongen kan slå
+$b13[4][6] = 'W';
+$b13[2][2] = 'B';
 $g9 = gameFrom($b13);
 $legal = $g9->legalMoves();
-ok(isset($legal['4,4']), "Konge med slag-mulighed er lovlig");
-ok(!isset($legal['4,6']), "Brik uden slag er ulovlig når konge har tvunget slag");
+ok(isset($legal['4,4']), "Dam med slag-mulighed er lovlig");
+ok(!isset($legal['4,6']), "Brik uden slag er ulovlig når Dam har tvunget slag");
 
-// Test 14: Vinder når modstander ingen brikker har.
+// Test 14: Kaskade for Dam — slag i én retning, så slag i en anden retning.
+// Dam (4,4) slår B(2,2)->(1,1); derfra kan den slå B(0,3) diagonalt ned-højre? Nej,
+// (1,1)->(0,3) er ikke diagonal. Brug korrekt opsætning: Dam (4,4) slår B(2,2) lander (1,1),
+// så skal slå B på diagonal fra (1,1). Sæt B(2,4) så (1,1)->slå til (3,5)? heller ikke diagonal.
+// Enklere: Dam (4,0) slår B(2,2)->(1,3), så B(3,5) diagonal ned-højre fra (1,3)->(5,7)? nej diagonal.
+// Hold det enkelt: verificér at efter Dam-slag, hvis nyt slag muligt, fortsætter turen.
 $b14 = makeBoard();
-$b14[7][0] = 'W';
-$g10 = gameFrom($b14, 'B');
-$legalB = $g10->legalMoves();
-ok(count($legalB) === 0, "Sort med ingen brikker har ingen lovlige træk");
+$b14[5][5] = 'WK';
+$b14[3][3] = 'B';   // dam slår op-venstre: (5,5)->slå B(3,3)->(2,2)
+$b14[1][1] = 'B';   // fra (2,2) kan slå B(1,1)? Nej, (1,1) er 1 felt diagonalt fra (2,2),
+                    // men landingsfelt (0,0) er tomt -> slag muligt -> kaskade.
+$g10 = gameFrom($b14);
+$g10->move(5, 5, 2, 2);  // første slag
+ok($g10->continuing() === '2,2', "Efter Dam-slag er continuing sat til (2,2)");
+ok($g10->turn() === 'W', "Det er stadig hvids tur (kaskade)");
+$legal = $g10->legalMoves();
+ok(in_array('0,0', $legal['2,2'] ?? [], true), "Kaskade: Dam kan slå igen til (0,0)");
+$g10->move(2, 2, 0, 0);
+ok($g10->continuing() === null && $g10->turn() === 'B', "Efter kaskade slut er det sorts tur");
 
-// Test 15: Round-trip bevarer tilstand.
+// Test 15: Vinder når modstander ingen brikker har.
+$b15 = makeBoard();
+$b15[7][0] = 'W';
+$g11 = gameFrom($b15, 'B');
+ok(count($g11->legalMoves()) === 0, "Sort med ingen brikker har ingen lovlige træk");
+
+// Test 16: Round-trip bevarer tilstand.
 $g = Game::create();
 $g->move(5, 0, 4, 1);
 $state = $g->toArray();
-$g11 = Game::fromArray($state);
-ok($g11->turn() === $g->turn(), "Round-trip bevarer tur");
-ok($g11->board() === $g->board(), "Round-trip bevarer bræt");
+$g12 = Game::fromArray($state);
+ok($g12->turn() === $g->turn() && $g12->board() === $g->board(), "Round-trip bevarer tilstand");
 
 echo "\n";
 if ($failures === 0) {

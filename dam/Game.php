@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Spilmotor for netværksbaseret Dam (international dam / "pool checkers"-agtig).
+ * Spilmotor for netværksbaseret Dam (international dam med "land-bagved"-regel).
  *
  * Regler:
  *  - 8x8 bræt, brikker på mørke felter ((r+c) ulige).
@@ -10,15 +10,15 @@ declare(strict_types=1);
  *  - Sort (B) starter øverst (række 0-2) og rykker NEDAD (mod række 7).
  *  - Menig brik: rykker 1 felt diagonalt fremad. Slår ved at hoppe over en
  *    modstander-brik til det tomt felt umiddelbart bagved.
- *  - Konge (WK/BK): GLIDER et vilkårligt antal tomme felter diagonalt i alle
- *    4 retninger (som et tårn på diagonalen). Kan slå på afstand ("flyvende
- *    konge"): hopper over PRÆCIS ÉN modstander-brik på diagonalen og lander
- *    på et hvilket som helst tomt felt længere ude på samme diagonal.
+ *  - Konge/Dam (WK/BK): GLIDER et vilkårligt antal tomme felter diagonalt i alle
+ *    4 retninger (som et tårn på diagonalen). Ved slag: hopper over en
+ *    modstander-brik og SKAL lande på feltet UMMIDELBART bagved denne brik
+ *    (ikke længere ude). Dette muliggør fælde-strategi.
  *  - Tvunget slag: hvis mindst ét slag er muligt, SKAL spilleren slå.
- *  - Kaskade-slag: efter et slag, hvis samme brik kan slå igen, fortsætter turen.
- *  - Promovering: en menig brik der når modstanderens bagrække bliver konge.
- *    Promovering afslutter brikken tur (kan ikke fortsætte kaskade efter promovering
- *    — "Harélé"-reglen fravalgt her for enkelthed).
+ *  - Kaskade-slag: efter et slag, hvis samme brik kan slå igen (i hvilken som
+ *    helst retning for Dammen), fortsætter turen.
+ *  - Promovering: en menig brik der når modstanderens bagrække bliver Dam.
+ *    Promovering afslutter brikken tur.
  *  - Vinder: modstanderen har ingen brikker, eller ingen lovlige træk.
  */
 
@@ -180,7 +180,7 @@ final class Game
     }
 
     /**
-     * Menig brik: 1 felt fremad, slag ved hop over 1 modstander-brik.
+     * Menig brik: 1 felt fremad, slag ved hop over 1 modstander-brik til felt bagved.
      * @return array{0: list<string>, 1: list<string>}
      */
     private function manMoves(int $r, int $c, string $piece): array
@@ -217,9 +217,9 @@ final class Game
     }
 
     /**
-     * Konge: glider vilkårligt antal tomme felter diagonalt. Flyvende konge-slag:
-     * hop over PRÆCIS ÉN modstander-brik og land på et vilkårligt tomt felt længere
-     * ude på samme diagonal.
+     * Konge/Dam: glider vilkårligt antal tomme felter diagonalt i alle retninger.
+     * Ved slag: hopper over ÉN modstander-brik og SKAL lande på feltet umiddelbart
+     * bagved denne brik (streng "land-bagved"-regel — muliggør fælder).
      * @return array{0: list<string>, 1: list<string>}
      */
     private function kingMoves(int $r, int $c, string $piece): array
@@ -229,7 +229,6 @@ final class Game
         $simple = [];
 
         foreach ($diagonals as [$dr, $dc]) {
-            $foundEnemy = false;
             $step = 1;
             while (true) {
                 $nr = $r + $step * $dr;
@@ -238,30 +237,25 @@ final class Game
                     break;
                 }
                 $cell = $this->board[$nr][$nc];
-                if (!$foundEnemy) {
-                    if ($cell === '') {
-                        // Fri diagonal — kan lande her (simpelt træk) eller fortsætte.
-                        $simple[] = "$nr,$nc";
-                    } else {
-                        // Ramte en brik. Hvis det er en modstander, kan måske slås.
-                        if ($cell[0] !== $piece[0]) {
-                            $foundEnemy = true;
-                            // Næste felter undersøges i næste iteration.
-                        } else {
-                            // Egen brik blokerer.
-                            break;
-                        }
-                    }
-                } else {
-                    // Vi har passeret en modstander-brik. Kan lande på tomt felt her.
-                    if ($cell === '') {
-                        $captures[] = "$nr,$nc";
-                    } else {
-                        // Anden brik blokerer — kan ikke lande her eller længere.
-                        break;
-                    }
+                if ($cell === '') {
+                    // To felt — kan lande her som simpelt træk, eller fortsætte.
+                    $simple[] = "$nr,$nc";
+                    $step++;
+                    continue;
                 }
-                $step++;
+                // Ikke-tom felt: hvis modstander, kan måske slås; hvis egen, blokeret.
+                if ($cell[0] === $piece[0]) {
+                    break; // egen brik blokerer diagonalen.
+                }
+                // Modstander-brik fundet på (nr,nc). Landingsfeltet er umiddelbart bagved.
+                $landR = $nr + $dr;
+                $landC = $nc + $dc;
+                if ($this->inBounds($landR, $landC) && $this->board[$landR][$landC] === '') {
+                    $captures[] = "$landR,$landC";
+                }
+                // Uanset om landingen var mulig eller ej, kan vi ikke fortsætte
+                // forbi denne modstander på diagonalen (kun ét slag pr. diagonal-prøve).
+                break;
             }
         }
 
@@ -292,10 +286,9 @@ final class Game
         $piece = $this->board[$fromR][$fromC];
         $this->board[$fromR][$fromC] = '';
 
-        $isCapture = ($this->isKing($piece))
-            ? $this->isKingCapture($fromR, $fromC, $toR, $toC, $piece)
-            : (abs($toR - $fromR) === 2);
-
+        // Et slag findes når destinationen er 2 felter væk (menig) ELLER når
+        // der ligger en modstander-brik umiddelbart før destinationen (Dam).
+        $isCapture = $this->isCaptureMove($fromR, $fromC, $toR, $toC, $piece);
         if ($isCapture) {
             $this->removeCaptured($fromR, $fromC, $toR, $toC, $piece);
         }
@@ -325,54 +318,46 @@ final class Game
     }
 
     /**
-     * Er dette et konge-slag? Det er et slag hvis der findes en modstander-brik
-     * på diagonalen mellem from og to (og alle andre felter derimellem er tomme).
+     * Er dette træk et slag? For menige: destination 2 felter væk.
+     * For Dam: der findes en modstander-brik umiddelbart før destinationen
+     * på diagonalen (streng land-bagved-regel).
      */
-    private function isKingCapture(int $fromR, int $fromC, int $toR, int $toC, string $piece): bool
+    private function isCaptureMove(int $fromR, int $fromC, int $toR, int $toC, string $piece): bool
     {
+        if (!$this->isKing($piece)) {
+            return abs($toR - $fromR) === 2;
+        }
+        // Dam: find feltet umiddelbart før destinationen.
         $dr = ($toR > $fromR) ? 1 : -1;
         $dc = ($toC > $fromC) ? 1 : -1;
-        $dist = abs($toR - $fromR); // |dr|=|dc| på diagonal
-        $enemies = 0;
-        for ($s = 1; $s < $dist; $s++) {
-            $r = $fromR + $s * $dr;
-            $c = $fromC + $s * $dc;
-            $cell = $this->board[$r][$c] ?? '';
-            if ($cell !== '') {
-                if ($cell[0] !== $piece[0]) {
-                    $enemies++;
-                } else {
-                    return false; // egen brik blokerer
-                }
-            }
+        $preR = $toR - $dr;
+        $preC = $toC - $dc;
+        if (!$this->inBounds($preR, $preC)) {
+            return false;
         }
-        return $enemies === 1;
+        $cell = $this->board[$preR][$preC];
+        return $cell !== '' && $cell[0] !== $piece[0];
     }
 
     /**
-     * Fjern den slåede brik for et træk (menig eller konge).
+     * Fjern den slåede brik. For menige: feltet midt imellem.
+     * For Dam (land-bagved-regel): feltet umiddelbart før destinationen.
      */
     private function removeCaptured(int $fromR, int $fromC, int $toR, int $toC, string $piece): void
     {
         if (!$this->isKing($piece)) {
-            // Menig: brikken midt imellem.
             $midR = $fromR + (int) (($toR - $fromR) / 2);
             $midC = $fromC + (int) (($toC - $fromC) / 2);
             $this->board[$midR][$midC] = '';
             return;
         }
-        // Konge: find den modstander-brik på diagonalen og fjern den.
+        // Dam: fjern feltet umiddelbart før destinationen på diagonalen.
         $dr = ($toR > $fromR) ? 1 : -1;
         $dc = ($toC > $fromC) ? 1 : -1;
-        $dist = abs($toR - $fromR);
-        for ($s = 1; $s < $dist; $s++) {
-            $r = $fromR + $s * $dr;
-            $c = $fromC + $s * $dc;
-            $cell = $this->board[$r][$c] ?? '';
-            if ($cell !== '' && $cell[0] !== $piece[0]) {
-                $this->board[$r][$c] = '';
-                return;
-            }
+        $preR = $toR - $dr;
+        $preC = $toC - $dc;
+        if ($this->inBounds($preR, $preC)) {
+            $this->board[$preR][$preC] = '';
         }
     }
 
