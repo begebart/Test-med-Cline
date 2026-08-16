@@ -2,14 +2,14 @@
 declare(strict_types=1);
 
 /**
- * REST-ish endpoint for netværksbaseret Dam.
+ * REST-ish endpoint for netværksbaseret Dam (international dam-regler).
  * Endpoints: join | status | move | reset
+ *
+ * Delt tilstand i ./data/state.json og ./data/players.json med flock-lås.
+ * Polling er kort (~6s) for at være robust mod Apache/Nginx + php-fpm.
  */
 
 require __DIR__ . '/Game.php';
-
-ini_set('display_errors', '0');
-error_reporting(E_ALL);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -106,36 +106,15 @@ function newToken(): string
     return bin2hex(random_bytes(16));
 }
 
-/** Byg status-svar inkl. server-beregnete lovlige træk + debug. */
+/** Byg status-svar inkl. server-beregnete lovlige træk for aktuelle spiller. */
 function buildStatus(array $state, array $players): array
 {
     $game = Game::fromArray($state['game']);
-    $debug = [];
-    try {
-        $board = $state['game']['board'] ?? [];
-        $counts = ['W' => 0, 'B' => 0];
-        foreach ($board as $row) {
-            if (!is_array($row)) { $debug[] = 'row ikke array: ' . gettype($row); continue; }
-            foreach ($row as $p) {
-                if (is_string($p) && $p !== '' && isset($p[0]) && isset($counts[$p[0]])) {
-                    $counts[$p[0]]++;
-                }
-            }
-        }
-        $debug['turn'] = $state['game']['turn'] ?? '?(mangler)';
-        $debug['counts'] = $counts;
-        $debug['game_turn_method'] = $game->turn();
-        $legal = $game->legalMoves();
-        $debug['legal_count'] = count($legal);
-    } catch (\Throwable $e) {
-        $legal = ['__error__' => $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()];
-    }
     return [
         'ok'    => true,
         'rev'   => $state['rev'],
         'game'  => $state['game'],
-        'legal' => $legal,
-        'debug' => $debug,
+        'legal' => $game->legalMoves(),
         'slots' => [
             'W' => $players['slots']['W'] !== null,
             'B' => $players['slots']['B'] !== null,

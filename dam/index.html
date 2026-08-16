@@ -93,12 +93,12 @@
   .piece.w { background: radial-gradient(circle at 35% 30%, #fff, #c8c2b5); }
   .piece.b { background: radial-gradient(circle at 35% 30%, #555, #000); }
   .piece.king::before {
-    content: '♛';
-    font-size: 1.5em;
+    content: '♔';
+    font-size: 0.55em;
     line-height: 1;
   }
-  .piece.w.king::before { color: #7a5; }
-  .piece.b.king::before { color: #c93; }
+  .piece.w.king::before { color: #d4af37; }
+  .piece.b.king::before { color: #ffd700; }
   .labels {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
@@ -138,7 +138,7 @@
     <div class="labels" id="collabels"></div>
   </div>
   <button id="reset">Nulstil spil</button>
-  <p class="note">Åbn denne side i to browsere/faner. Første der loader bliver Hvid (W), næste bliver Sort (B). W starter.</p>
+  <p class="note">Åbn denne side i to browsere/faner. Første der loader bliver Hvid (W), næste bliver Sort (B). W starter. Konger (♔) glider diagonalt som et tårn og kan slå på afstand.</p>
 
 <script src="app.js"></script>
 </body>
