@@ -121,17 +121,16 @@ async function onSquareClick(e) {
       flash('Du skal fortsætte med den brik der lige slog.');
       return;
     }
-    // Brug serverens lovlige træk.
+    // Brug serverens lovlige træk (autoritativt).
     const key = `${r},${c}`;
     const targets = legal[key] || [];
     currentTargets = new Set(targets);
     if (currentTargets.size === 0) {
-      // Er der overhovedet lovlige træk for nogen brik?
       const anyLegal = Object.keys(legal).length > 0;
       if (anyLegal) {
         flash('Du skal flytte en anden brik (tvunget slag gælder).');
       } else {
-        flash('Ingen lovlige træk tilgængelige.');
+        flash('Ingen lovlige træk tilgængelige — vent på serveren.');
       }
       selected = null;
     } else {
@@ -186,13 +185,16 @@ async function pollNow() {
   polling = true;
   try {
     const d = await api('status', { rev: knownRev });
+    const changed = d.rev !== knownRev;
     knownRev = d.rev;
     game = d.game;
     legal = d.legal || {};
     slots = d.slots;
-    // Hvis turen skiftede eller brættet ændrede sig, ryd valg.
-    selected = null;
-    currentTargets.clear();
+    // Ryd kun valg hvis brættet faktisk ændrede sig (ikke ved gentagne identiske poll).
+    if (changed) {
+      selected = null;
+      currentTargets.clear();
+    }
     render();
   } catch (e) {
     $('status').textContent = 'Forbindelsesfejl: ' + e.message;
