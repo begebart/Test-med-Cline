@@ -89,16 +89,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
   }
   .piece.w { background: radial-gradient(circle at 35% 30%, #fff, #c8c2b5); }
   .piece.b { background: radial-gradient(circle at 35% 30%, #555, #000); }
-  .piece.king::before {
-    content: '♔';
-    font-size: 0.55em;
-    line-height: 1;
+  /* Konge-marker: en cirkelplet i midten af brikken. */
+  .piece.king::after {
+    content: '';
+    position: absolute;
+    width: 32%;
+    height: 32%;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
-  .piece.w.king::before { color: #d4af37; }
-  .piece.b.king::before { color: #ffd700; }
+  .piece.w.king::after { background: #1a1a1a; }
+  .piece.b.king::after { background: #f4f1ea; }
   .labels {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
@@ -138,7 +146,7 @@
     <div class="labels" id="collabels"></div>
   </div>
   <button id="reset">Nulstil spil</button>
-  <p class="note">Åbn denne side i to browsere/faner. Første der loader bliver Hvid (W), næste bliver Sort (B). W starter. Konger (♔) glider diagonalt som et tårn og kan slå på afstand.</p>
+  <p class="note">Åbn denne side i to browsere/faner. Første der loader bliver Hvid (W), næste bliver Sort (B). W starter. En brik med en plet i midten er en konge, som glider diagonalt og kan slå på afstand.</p>
 
 <script src="app.js"></script>
 </body>
