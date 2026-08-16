@@ -1,0 +1,9 @@
+# Apache-konfiguration for Dam-spillet.
+# Kræver at AllowOverride er slået til for mappen i Apache-config.
+DirectoryIndex index.html
+
+# Tillad ikke direkte adgang til data-mappen (spil-tilstand + tokens).
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^data/ - [F]
+</IfModule>
