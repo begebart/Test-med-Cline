@@ -6,8 +6,8 @@ declare(strict_types=1);
  *
  * Regler (kort):
  *  - 8x8 bræt, spillere spiller på mørke felter.
- *  - Hvid (W) starter nederst og rykker "op" (rækkenummer stiger).
- *  - Sort (B) starter øverst og rykker "ned" (rækkenummer falder).
+ *  - Hvid (W) starter nederst (række 5-7) og rykker OPAD (række aftager, mod række 0).
+ *  - Sort (B) starter øverst (række 0-2) og rykker NEDAD (række stiger, mod række 7).
  *  - Almindelige brikker rykker 1 felt diagonalt fremad.
  *  - Konger (WK/BK) rykker 1 felt diagonalt i alle retninger.
  *  - Slag foregår ved at hoppe over en modstander-brik til et tomt felt bagved.
@@ -42,9 +42,8 @@ final class Game
     }
 
     /**
-     * Normaliser boardet til at have int-nøgler og fuld 8x8 struktur.
-     * JSON-decoding giver string-nøgler ("0","1"...) som bryder strict_types
-     * int-parametre. Her sikrer vi int-nøgler og at alle felter findes.
+     * Normaliser boardet til int-nøgler og fuld 8x8 struktur.
+     * JSON-decoding giver string-nøgler ("0","1"...) — her sikrer vi int-nøgler.
      */
     private static function normalizeBoard(array $raw): array
     {
@@ -69,7 +68,8 @@ final class Game
         for ($r = 0; $r < self::SIZE; $r++) {
             $b[$r] = array_fill(0, self::SIZE, self::EMPTY);
         }
-        // Sort (top) på række 0,1,2; Hvid (bund) på række 5,6,7. Kun mørke felter.
+        // Sort (top) på række 0,1,2; Hvid (bund) på række 5,6,7. Kun mørke felter:
+        // mørkt felt når (r+c) er ulige.
         for ($r = 0; $r < 3; $r++) {
             for ($c = 0; $c < self::SIZE; $c++) {
                 if (($r + $c) % 2 === 1) {
@@ -204,10 +204,11 @@ final class Game
         if ($isKing) {
             return [[-1, -1], [-1, 1], [1, -1], [1, 1]];
         }
-        // Menig hvid rykker op (+1), sort ned (-1).
+        // Menig hvid (bund, række 5-7) rykker OPAD mod række 0: dr = -1.
+        // Menig sort (top, række 0-2) rykker NEDAD mod række 7: dr = +1.
         return $piece[0] === 'W'
-            ? [[1, -1], [1, 1]]
-            : [[-1, -1], [-1, 1]];
+            ? [[-1, -1], [-1, 1]]
+            : [[1, -1], [1, 1]];
     }
 
     private function inBounds(int $r, int $c): bool
@@ -241,10 +242,11 @@ final class Game
             $this->board[$midR][$midC] = '';
         }
 
-        // Promovering ved bagste række.
+        // Promovering ved bagste række. Hvids bagrække er række 0 (den rykker mod).
+        // Sorts bagrække er række 7.
         $promoted = false;
         if (strlen($piece) === 1) {
-            if (($piece === 'W' && $toR === self::SIZE - 1) || ($piece === 'B' && $toR === 0)) {
+            if (($piece === 'W' && $toR === 0) || ($piece === 'B' && $toR === self::SIZE - 1)) {
                 $piece .= 'K';
                 $promoted = true;
             }
