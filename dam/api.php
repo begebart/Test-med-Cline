@@ -8,8 +8,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/Game.php';
 
-// Midlertidig fejlvisning for at finde runtime-fejl (fjern i produktion).
-ini_set('display_errors', '0'); // ikke HTML i JSON
+ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -107,14 +106,28 @@ function newToken(): string
     return bin2hex(random_bytes(16));
 }
 
-/** Byg status-svar inkl. server-beregnete lovlige træk. Fejl fanges og eksponeres. */
+/** Byg status-svar inkl. server-beregnete lovlige træk + debug. */
 function buildStatus(array $state, array $players): array
 {
     $game = Game::fromArray($state['game']);
+    $debug = [];
     try {
+        $board = $state['game']['board'] ?? [];
+        $counts = ['W' => 0, 'B' => 0];
+        foreach ($board as $row) {
+            if (!is_array($row)) { $debug[] = 'row ikke array: ' . gettype($row); continue; }
+            foreach ($row as $p) {
+                if (is_string($p) && $p !== '' && isset($p[0]) && isset($counts[$p[0]])) {
+                    $counts[$p[0]]++;
+                }
+            }
+        }
+        $debug['turn'] = $state['game']['turn'] ?? '?(mangler)';
+        $debug['counts'] = $counts;
+        $debug['game_turn_method'] = $game->turn();
         $legal = $game->legalMoves();
+        $debug['legal_count'] = count($legal);
     } catch (\Throwable $e) {
-        // Vis fejlen i stedet for at lade JSON mangle legal.
         $legal = ['__error__' => $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()];
     }
     return [
@@ -122,6 +135,7 @@ function buildStatus(array $state, array $players): array
         'rev'   => $state['rev'],
         'game'  => $state['game'],
         'legal' => $legal,
+        'debug' => $debug,
         'slots' => [
             'W' => $players['slots']['W'] !== null,
             'B' => $players['slots']['B'] !== null,
