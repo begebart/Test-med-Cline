@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dam — 2 spillere</title>
+<style>
+  :root {
+    --dark: #5a3a22;
+    --light: #e8d3b0;
+    --w: #f4f1ea;
+    --b: #1a1a1a;
+    --accent: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #2c3e50;
+    color: #ecf0f1;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+  h1 { margin: 8px 0 4px; font-size: 1.4rem; }
+  #status {
+    margin-bottom: 12px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.25);
+    font-size: 1rem;
+    min-height: 1.4em;
+    text-align: center;
+    max-width: 560px;
+  }
+  #status .you { font-weight: 700; }
+  .slot {
+    display: inline-block;
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 50%;
+    vertical-align: middle;
+    margin: 0 2px;
+    border: 2px solid rgba(255,255,255,0.4);
+  }
+  .slot.w { background: var(--w); }
+  .slot.b { background: var(--b); }
+  .slot.empty { background: #555; }
+  .board-wrap {
+    display: grid;
+    grid-template-columns: 1.5em 1fr;
+    grid-template-rows: 1fr 1.5em;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    width: min(90vw, 560px);
+    aspect-ratio: 1 / 1;
+    border: 4px solid #2c1810;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  }
+  .square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    user-select: none;
+  }
+  .square.light { background: var(--light); }
+  .square.dark { background: var(--dark); }
+  .square.selectable { cursor: pointer; }
+  .square.selected { box-shadow: inset 0 0 0 4px var(--accent); }
+  .square.target::after {
+    content: '';
+    position: absolute;
+    width: 30%;
+    height: 30%;
+    border-radius: 50%;
+    background: rgba(46, 204, 113, 0.75);
+  }
+  .square.lastmove { box-shadow: inset 0 0 0 3px rgba(241, 196, 15, 0.8); }
+  .piece {
+    width: 78%;
+    height: 78%;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -3px 6px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .piece.w { background: radial-gradient(circle at 35% 30%, #fff, #c8c2b5); }
+  .piece.b { background: radial-gradient(circle at 35% 30%, #555, #000); }
+  .piece.king::before {
+    content: '♛';
+    font-size: 1.5em;
+    line-height: 1;
+  }
+  .piece.w.king::before { color: #7a5; }
+  .piece.b.king::before { color: #c93; }
+  .labels {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    font-size: 0.7rem;
+    text-align: center;
+    color: #bdc3c7;
+  }
+  .rowlabels {
+    display: grid;
+    grid-template-rows: repeat(8, 1fr);
+    font-size: 0.7rem;
+    align-items: center;
+    justify-items: center;
+    color: #bdc3c7;
+  }
+  button {
+    margin-top: 14px;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  .note { font-size: 0.8rem; color: #95a5a6; margin-top: 8px; max-width: 560px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>♠ Dam — 2 spillere ♠</h1>
+  <div id="status">Forbinder…</div>
+  <div class="board-wrap">
+    <div class="rowlabels" id="rowlabels"></div>
+    <div class="board" id="board"></div>
+    <div></div>
+    <div class="labels" id="collabels"></div>
+  </div>
+  <button id="reset">Nulstil spil</button>
+  <p class="note">Åbn denne side i to browsere/faner. Første der loader bliver Hvid (W), næste bliver Sort (B). W starter.</p>
+
+<script src="app.js"></script>
+</body>
+</html>
