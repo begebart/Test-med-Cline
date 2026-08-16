@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 let mySlot = null;        // 'W' | 'B' | null
 let knownRev = 0;
 let game = null;          // seneste game-state
+let legal = {};           // server-beregnete lovlige træk: { "r,c": ["r,c", ...] }
 let slots = { W: false, B: false };
 let selected = null;      // {r,c}
 let currentTargets = new Set();
@@ -102,9 +103,8 @@ async function onSquareClick(e) {
     return;
   }
 
-  // Trin 2: Trin for at vælge en brik. Giv altid tydelig feedback.
+  // Trin 2: Vælg en brik — med tydelig feedback.
   if (piece) {
-    // Er det min egen brik?
     if (!mySlot) {
       flash('Du er ikke forbundet til spillet endnu. Vent et øjeblik eller genindlæs siden.');
       return;
@@ -113,27 +113,29 @@ async function onSquareClick(e) {
       flash('Det er modstanderens brik.');
       return;
     }
-    // Er det min tur?
     if (game.turn !== mySlot) {
       flash('Det er ikke din tur endnu.');
       return;
     }
-    // Kaskade: skal fortsætte med den rigtige brik?
     if (game.continuing && game.continuing !== `${r},${c}`) {
       flash('Du skal fortsætte med den brik der lige slog.');
       return;
     }
-    // Vælg brikken.
-    selected = { r, c };
-    currentTargets = await fetchLegalTargets(r, c);
+    // Brug serverens lovlige træk.
+    const key = `${r},${c}`;
+    const targets = legal[key] || [];
+    currentTargets = new Set(targets);
     if (currentTargets.size === 0) {
-      // Tvunget slag: denne brik kan ikke flytte nu.
-      const anyCapture = anyCaptureAvailable(mySlot);
-      if (anyCapture) {
-        flash('Du skal slå med en anden brik (tvunget slag).');
+      // Er der overhovedet lovlige træk for nogen brik?
+      const anyLegal = Object.keys(legal).length > 0;
+      if (anyLegal) {
+        flash('Du skal flytte en anden brik (tvunget slag gælder).');
       } else {
-        flash('Denne brik kan ikke flytte.');
+        flash('Ingen lovlige træk tilgængelige.');
       }
+      selected = null;
+    } else {
+      selected = { r, c };
     }
     render();
   } else {
@@ -144,61 +146,6 @@ async function onSquareClick(e) {
       render();
     }
   }
-}
-
-function inb(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
-
-function dirsFor(p) {
-  const isKing = p.length === 2;
-  if (isKing) return [[-1,-1],[-1,1],[1,-1],[1,1]];
-  return p[0] === 'W' ? [[1,-1],[1,1]] : [[-1,-1],[-1,1]];
-}
-
-function anyCaptureAvailable(color) {
-  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-    const p = game.board[r][c];
-    if (!p || p[0] !== color) continue;
-    for (const [dr, dc] of dirsFor(p)) {
-      const mr = r + dr, mc = c + dc, lr = r + 2 * dr, lc = c + 2 * dc;
-      if (inb(lr, lc) && game.board[mr]?.[mc] && game.board[mr][mc][0] !== color && !game.board[lr][lc]) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-async function fetchLegalTargets(r, c) {
-  // Klient-genspejling af server-reglerne; serveren har sidste ord.
-  const targets = new Set();
-  const piece = game.board[r][c];
-  if (!piece) return targets;
-  const dirs = dirsFor(piece);
-
-  // Kaskade: kun denne briks slag.
-  if (game.continuing === `${r},${c}`) {
-    for (const [dr, dc] of dirs) {
-      const mr = r + dr, mc = c + dc, lr = r + 2 * dr, lc = c + 2 * dc;
-      if (inb(lr, lc) && game.board[mr]?.[mc] && game.board[mr][mc][0] !== piece[0] && !game.board[lr][lc]) {
-        targets.add(`${lr},${lc}`);
-      }
-    }
-    return targets;
-  }
-
-  // Tvunget slag: hvis nogen brik kan slå, er KUN slag tilladt.
-  const anyCapture = anyCaptureAvailable(game.turn);
-  for (const [dr, dc] of dirs) {
-    const mr = r + dr, mc = c + dc, lr = r + 2 * dr, lc = c + 2 * dc;
-    if (inb(lr, lc) && game.board[mr]?.[mc] && game.board[mr][mc][0] !== piece[0] && !game.board[lr][lc]) {
-      targets.add(`${lr},${lc}`);
-    }
-    if (!anyCapture) {
-      const nr = r + dr, nc = c + dc;
-      if (inb(nr, nc) && !game.board[nr][nc]) targets.add(`${nr},${nc}`);
-    }
-  }
-  return targets;
 }
 
 function flash(msg) {
@@ -241,7 +188,11 @@ async function pollNow() {
     const d = await api('status', { rev: knownRev });
     knownRev = d.rev;
     game = d.game;
+    legal = d.legal || {};
     slots = d.slots;
+    // Hvis turen skiftede eller brættet ændrede sig, ryd valg.
+    selected = null;
+    currentTargets.clear();
     render();
   } catch (e) {
     $('status').textContent = 'Forbindelsesfejl: ' + e.message;

@@ -6,13 +6,12 @@ declare(strict_types=1);
  *
  * Endpoints:
  *   POST api.php?action=join            -> tildeler spiller W/B eller afviser (kun 2)
- *   GET  api.php?action=status&rev=N     -> returnerer state; kort-poller op til ~6s
+ *   GET  api.php?action=status&rev=N     -> returnerer state + legal moves; kort-poller ~6s
  *   POST api.php?action=move&from=&to=   -> udfører træk for den aktuelle spiller
  *   POST api.php?action=reset           -> nulstiller spil + spillere
  *
  * Robust mod Apache/Nginx + php-fpm: polling er kort (6s) så processer frigives hurtigt.
- * Delt tilstand gemmes i ./data/state.json og ./data/players.json med en flock-lås,
- * så kun én anmodning ad gangen ændrer spillet.
+ * Delt tilstand gemmes i ./data/state.json og ./data/players.json med en flock-lås.
  */
 
 require __DIR__ . '/Game.php';
@@ -103,7 +102,6 @@ function saveState(array $state): void
 
 function cookieToken(): string
 {
-    // Spiller-identitet via cookie (sat af join), alternativt header.
     $t = $_SERVER['HTTP_X_PLAYER_TOKEN'] ?? ($_COOKIE['player_token'] ?? '');
     return is_string($t) ? $t : '';
 }
@@ -111,6 +109,22 @@ function cookieToken(): string
 function newToken(): string
 {
     return bin2hex(random_bytes(16));
+}
+
+/** Byg status-svar inkl. server-beregnete lovlige træk for aktuelle spiller. */
+function buildStatus(array $state, array $players): array
+{
+    $game = Game::fromArray($state['game']);
+    return [
+        'ok'    => true,
+        'rev'   => $state['rev'],
+        'game'  => $state['game'],
+        'legal' => $game->legalMoves(),
+        'slots' => [
+            'W' => $players['slots']['W'] !== null,
+            'B' => $players['slots']['B'] !== null,
+        ],
+    ];
 }
 
 $action = $_GET['action'] ?? '';
@@ -121,7 +135,6 @@ switch ($action) {
         $token = withLock(function () use (&$assigned) {
             $players = loadPlayers();
             $token = cookieToken();
-            // Genopret token hvis allerede tildelt.
             foreach ($players['slots'] as $slot => $tok) {
                 if ($tok === $token && $token !== '') {
                     $assigned = $slot;
@@ -143,7 +156,6 @@ switch ($action) {
         if ($token === null) {
             err('Spillet er fuldt (2 spillere). Prøv igen senere.', 409);
         }
-        // Sæt cookie så klienten husker hvem den er.
         setcookie('player_token', $token, [
             'path'     => '/',
             'httponly' => true,
@@ -155,36 +167,16 @@ switch ($action) {
 
     case 'status':
         $rev = isset($_GET['rev']) ? (int) $_GET['rev'] : 0;
-        // Robust polling for php-fpm: kort cyklus (~6s) så processer frigives.
         $deadline = time() + 6;
         while (time() < $deadline) {
             $state = loadState();
             if ($state['rev'] > $rev) {
-                $players = loadPlayers();
-                jsonResponse([
-                    'ok'   => true,
-                    'rev'  => $state['rev'],
-                    'game' => $state['game'],
-                    'slots' => [
-                        'W' => $players['slots']['W'] !== null,
-                        'B' => $players['slots']['B'] !== null,
-                    ],
-                ]);
+                jsonResponse(buildStatus($state, loadPlayers()));
             }
-            usleep(400000); // 0.4s mellem tjek
+            usleep(400000);
         }
-        // Timeout - returner nuværende uændret tilstand.
-        $state = loadState();
-        $players = loadPlayers();
-        jsonResponse([
-            'ok'    => true,
-            'rev'   => $state['rev'],
-            'game'  => $state['game'],
-            'slots' => [
-                'W' => $players['slots']['W'] !== null,
-                'B' => $players['slots']['B'] !== null,
-            ],
-        ]);
+        // Timeout - returner nuværende uændrede tilstand.
+        jsonResponse(buildStatus(loadState(), loadPlayers()));
         break;
 
     case 'move':
@@ -222,7 +214,7 @@ switch ($action) {
             $state['game'] = $game->toArray();
             $state['rev'] = ($state['rev'] ?? 1) + 1;
             saveState($state);
-            return null; // ok
+            return null;
         });
 
         if ($error !== null) {
@@ -232,7 +224,6 @@ switch ($action) {
         break;
 
     case 'reset':
-        // Nulstil spil + spillere (til test/ny omgang).
         withLock(function () {
             $game = Game::create();
             saveState(['rev' => 1, 'game' => $game->toArray()]);
